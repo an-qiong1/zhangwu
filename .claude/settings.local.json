@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew :app:dependencies --configuration compileClasspath)",
+      "Bash(./gradlew :app:assembleDebug)",
+      "mcp__zai-mcp-server__analyze_image",
+      "mcp__zai-mcp-server__ui_to_artifact",
+      "Bash(./gradlew :app:compileDebugKotlin)",
+      "Bash(./gradlew compileDebugKotlin --no-daemon)",
+      "Bash(./gradlew compileDebugKotlin --no-daemon --stacktrace)",
+      "Bash(./gradlew kspDebugKotlin --no-daemon)",
+      "Bash(./gradlew kspDebugKotlin --refresh-dependencies --no-daemon)",
+      "WebSearch",
+      "Bash(./gradlew kspKotlin --no-daemon)",
+      "Bash(adb devices:*)",
+      "Bash(adb logcat:*)",
+      "Bash(./gradlew installDebug --no-daemon)",
+      "Bash(adb shell:*)",
+      "Bash(./gradlew assembleDebug --no-daemon)",
+      "Bash(./gradlew tasks:*)",
+      "Bash(./gradlew clean:*)",
+      "Bash(./gradlew installDebug)",
+      "Bash(rm:*)",
+      "Bash(./gradlew kspDebugKotlin)",
+      "Bash(adb uninstall:*)",
+      "Bash(adb install:*)",
+      "Bash(./gradlew assembleDebug --dry-run)",
+      "Bash(./gradlew :app:compileDebugKotlin --no-daemon)",
+      "Bash(./gradlew compileDebugKotlin --dry-run)",
+      "Bash(timeout 30 ./gradlew compileDebugKotlin --no-daemon --console=plain)",
+      "Bash(./gradlew compileDebugKotlin --console=plain)",
+      "Bash(.\\\\gradlew.bat :app:compileDebugKotlin --no-daemon)",
+      "Bash(./gradlew :app:compileDebugKotlin --no-daemon --rerun-tasks)"
+    ]
+  }
+}
