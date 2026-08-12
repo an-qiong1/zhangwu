@@ -13,6 +13,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
@@ -36,6 +37,10 @@ import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Watch
 import androidx.compose.material3.*
+import androidx.compose.runtime.Immutable
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.runtime.*
@@ -74,31 +79,8 @@ import com.example.zhangwu.viewmodel.WishViewModel
 import com.example.zhangwu.viewmodel.CategoryViewModel
 import com.example.zhangwu.viewmodel.ThemeViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.zhangwu.model.WishlistItem
 import androidx.activity.compose.BackHandler
 import com.example.zhangwu.LocalSubScreenState
-
-// 扩展函数：将 WishItem 转换为 WishlistItem
-fun WishItem.toWishlistItem(): WishlistItem {
-    return WishlistItem(
-        id = id,
-        name = name,
-        price = price.toDoubleOrNull() ?: 0.0,
-        targetAmount = targetAmount,
-        savedAmount = savedAmount,
-        category = "",
-        icon = icon,
-        remark = remark,
-        imageUri = imageUri
-    )
-}
-
-// 扩展函数：将 List<WishItem> 转换为 List<WishlistItem>
-fun List<WishItem>.toWishlistItems(): List<WishlistItem> {
-    return map { it.toWishlistItem() }
-}
-
-
 
 // ===================== 排序类型枚举 =====================
 enum class AssetSortType(val displayName: String) {
@@ -184,14 +166,30 @@ fun HorizontalScrollableCategoryBar(
     }
 }
 
+/** 资产统计数据，单次遍历产出 */
+@Immutable
+private data class AssetStats(
+    val serving: Int,
+    val retired: Int,
+    val sold: Int,
+    val totalValue: Double,
+    val totalDailyCost: Double
+)
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ItemCard(
-    asset: Asset, 
+    asset: Asset,
     onClick: () -> Unit,
     onLongClick: () -> Unit = {},
     isSelected: Boolean = false
 ) {
+    // 性能优化：缓存 Asset 计算属性，用 System.currentTimeMillis() 一次性快照，避免每次重组都 new Date()
+    val usedDays = remember(asset.id, asset.purchaseDate) { asset.usedDays() }
+    val totalDays = remember(asset.id, asset.expectedYears) { asset.totalDays }
+    val progress = remember(asset.id, asset.purchaseDate, asset.expectedYears) { asset.progress() }
+    val dailyCost = remember(asset.id, asset.purchasePrice, asset.purchaseDate) { asset.dailyCost() }
+
     // 修复：根据资产状态设置固定颜色，确保状态信息明显可见
     val statusColor = when (asset.status) {
         "服役中" -> Color(0xFF4ADE80) // 淡绿色
@@ -199,41 +197,40 @@ fun ItemCard(
         "已售出" -> Color(0xFFFCA5A5) // 淡红色
         else -> Color(0xFF4ADE80) // 默认淡绿色
     }
-    
+
     val categoryIcon = when (asset.category) {
         "通勤代步" -> Icons.Default.DirectionsCar
         "文娱数码" -> Icons.Default.PhoneAndroid
         "穿戴配饰" -> Icons.Default.Watch
         else -> Icons.AutoMirrored.Filled.List // 修复：将默认手机图标替换为通用物品图标（列表）
     }
-    
-    // 风格改造：大圆角资产卡片
+
+    // 方案A：整宽横向大卡片，左图右文，高度 wrap content，永不裁切
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(1f) // 改造：卡片改为正方形，宽高比1:1
-            .shadow(8.dp, MaterialTheme.shapes.large, false) // 风格改造：使用大圆角阴影
+            .shadow(8.dp, MaterialTheme.shapes.large, false)
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongClick
-            ), // 点击事件，跳转到编辑页面
+            ),
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected) {
-                MaterialTheme.colorScheme.surfaceVariant // 选中状态：使用surfaceVariant
+                MaterialTheme.colorScheme.surfaceVariant
             } else {
-                MaterialTheme.colorScheme.surface // 未选中状态：使用surface
+                MaterialTheme.colorScheme.surface
             }
-        ), // 深色模式适配：使用动态主题色
-        shape = MaterialTheme.shapes.large, // 风格改造：使用大圆角
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp) // 风格改造：增加卡片阴影
+        ),
+        shape = MaterialTheme.shapes.large,
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxWidth()) {
             // 选择状态指示
             if (isSelected) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(8.dp)
+                        .padding(12.dp)
                         .size(24.dp)
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.primary)
@@ -247,80 +244,143 @@ fun ItemCard(
                     )
                 }
             }
-            Column(modifier = Modifier.padding(20.dp)) { // 风格改造：增加内边距
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    // 风格改造：左侧物品图标区域，使用柔和的背景色
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp) // 风格改造：增大图标容器
-                            .clip(MaterialTheme.shapes.medium) // 风格改造：使用中圆角
-                            .background(MaterialTheme.colorScheme.surfaceVariant),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        // 使用默认图标作为兜底方案
+            // 横向布局：左图 + 右文
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // ========== 左侧：图片/图标区域（固定尺寸，圆角卡片） ==========
+                Box(
+                    modifier = Modifier
+                        .size(120.dp)
+                        .clip(MaterialTheme.shapes.medium)
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (!asset.imageUri.isNullOrBlank()) {
+                        AsyncImage(
+                            model = ImageRequest.Builder(LocalContext.current)
+                                .data(asset.imageUri)
+                                .crossfade(true)
+                                .build(),
+                            contentDescription = asset.name,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
                         Icon(
-                            categoryIcon, 
-                            contentDescription = asset.category, 
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant, // 修复：使用MD3动态主题色，与原有手机图标颜色一致
-                            modifier = Modifier.size(24.dp) // 风格改造：增大图标
+                            categoryIcon,
+                            contentDescription = asset.category,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(48.dp)
                         )
                     }
-                    Spacer(modifier = Modifier.width(16.dp)) // 风格改造：增加间距
-                    // 物品名称
-                    Text(
-                        asset.name, 
-                        fontSize = 16.sp, 
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 2, // 风格改造：允许两行显示
-                        modifier = Modifier.weight(1f) // 确保名称占据剩余空间
-                    )
                 }
 
-                Spacer(modifier = Modifier.height(20.dp)) // 风格改造：增加间距
-                Text("${asset.price} | 已使用${asset.usedDays}天", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(modifier = Modifier.height(16.dp)) // 风格改造：增加间距
-
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text(asset.dailyCost, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = statusColor) // 风格改造：增大字体
-                    Text("/天", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = statusColor, modifier = Modifier.padding(bottom = 0.dp)) // 修复：调整字体样式，与前面的数字保持一致
-                }
-
-                Spacer(modifier = Modifier.height(12.dp)) // 调整：减少间距，确保状态信息能显示
-                LinearProgressIndicator(
-                    progress = { asset.progress },
-                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(MaterialTheme.shapes.small), // 风格改造：增加进度条高度，使用小圆角
-                    color = statusColor,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-                Text(
-                    "已用 ${asset.usedDays} 天", // 改造：改为「已用 XX 天」
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 6.dp)
-                )
-
-                // 风格改造：状态标识，右下角纯色小圆点+文字
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.End)
-                        .padding(top = 12.dp), // 调整：减少间距，确保状态信息能显示
-                    verticalAlignment = Alignment.CenterVertically
+                // ========== 右侧：文字信息区 ==========
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(
+                    modifier = Modifier.weight(1f)
                 ) {
-                    // 纯色小圆点
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp) // 调整：增大圆点，使其更明显
-                            .clip(CircleShape)
-                            .background(statusColor)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp)) // 风格改造：增加间距
-                    // 状态文字
+                    // 第一行：名称
                     Text(
-                        asset.status,
-                        fontSize = 14.sp, // 调整：增大字体，使其更明显
-                        color = statusColor,
-                        fontWeight = FontWeight.Medium
+                        asset.name,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 2,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // 第二行：价格 + 已使用天数
+                    Text(
+                        "${asset.price} · 已用 ${usedDays} 天",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // 第三行：日均成本（始终显示，基于实际使用天数）
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text(
+                            dailyCost,
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = statusColor
+                        )
+                        Text(
+                            "/天",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = statusColor,
+                            modifier = Modifier.padding(bottom = 2.dp)
+                        )
+                    }
+
+                    if (asset.hasExpectedYears) {
+                        // ===== 设置了预期年限：显示进度条 + 总天数 =====
+                        Spacer(modifier = Modifier.height(10.dp))
+                        LinearProgressIndicator(
+                            progress = { progress },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp)
+                                .clip(MaterialTheme.shapes.small),
+                            color = statusColor,
+                            trackColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "已用 ${usedDays}/${totalDays} 天",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(statusColor)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    asset.status,
+                                    fontSize = 12.sp,
+                                    color = statusColor,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    } else {
+                        // ===== 未设置年限：只显示状态 =====
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(statusColor)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                asset.status,
+                                fontSize = 12.sp,
+                                color = statusColor,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -349,6 +409,8 @@ fun ZhangwuAppScreenContent(
     // 修复：使用ViewModel来管理全局可观察的数据
     val assetViewModel: AssetViewModel = viewModel()
     val wishViewModel: WishViewModel = viewModel()
+    // 心愿单数据从 Room Flow 订阅
+    val wishes by wishViewModel.wishItems.collectAsState()
     // 修复：使用CategoryViewModel管理分类数据，实现双向同步
     val categoryViewModel: CategoryViewModel = viewModel()
     // 修复：使用ThemeViewModel管理主题状态
@@ -365,11 +427,13 @@ fun ZhangwuAppScreenContent(
     var showCategoryTransferDialog by remember { mutableStateOf(false) }
     var showBatchActions by remember { mutableStateOf(false) }
     var showWishBatchActions by remember { mutableStateOf(false) }
-    var currentSortType by remember { mutableStateOf(AssetSortType.ADD_TIME) }
-    var isAscending by remember { mutableStateOf(false) } // 默认倒序（最新的在前）
+    var currentSortType by remember { mutableStateOf(AssetSortType.DAILY_COST) }
+    var isAscending by remember { mutableStateOf(false) } // 默认倒序（日均成本高的在前）
 
     // ===================== 分类筛选逻辑 =====================
-    var selectedCategory by remember { mutableStateOf("全部") }
+    val selectedCategory by categoryViewModel.selectedCategory.collectAsState()
+    val categoryList by categoryViewModel.categoryList.collectAsState()
+
     var selectedAssets by remember { mutableStateOf(emptyList<Asset>()) }
     var selectedWishes by remember { mutableStateOf(emptyList<WishItem>()) }
     
@@ -384,41 +448,94 @@ fun ZhangwuAppScreenContent(
     var newTagName by remember { mutableStateOf("") }
 
     // ===================== 筛选+排序后的资产列表（核心逻辑） =====================
-    val processedAssets = remember(allAssets, selectedCategory, selectedTag, currentSortType, isAscending) {
-        // 1. 先分类筛选
-        val categoryFiltered = if (selectedCategory == "全部") allAssets
-        else allAssets.filter { it.category == selectedCategory }
+    // 修复：remember 显式加所有依赖 key，保证输入变化时重建 producer
+    // processedAssets 是卡片实际显示的列表，之前因为 key 缺失导致依赖更新后不重算
+    val processedAssets by remember(
+        selectedCategory,
+        selectedTag,
+        currentSortType,
+        isAscending,
+        allAssets
+    ) {
+        derivedStateOf {
+            // 1. 先分类筛选
+            val categoryFiltered = if (selectedCategory == "全部") allAssets
+            else allAssets.filter { it.category == selectedCategory }
 
-        // 2. 再标签筛选
-        val tagFiltered = if (selectedTag == "全部") categoryFiltered
-        else categoryFiltered.filter { it.tags.contains(selectedTag) }
+            // 2. 再标签筛选
+            val tagFiltered = if (selectedTag == "全部") categoryFiltered
+            else categoryFiltered.filter { it.tags.contains(selectedTag) }
 
-        // 3. 再排序
-        tagFiltered.sortedWith(compareBy { asset ->
-            when (currentSortType) {
-                AssetSortType.ADD_TIME -> asset.id // 假设ID是自增的，代表添加时间
-                AssetSortType.PURCHASE_TIME -> asset.purchaseDate
-                AssetSortType.DAILY_COST -> asset.purchasePrice / asset.totalDays
-                AssetSortType.STATUS -> when (asset.status) {
-                    "服役中" -> 0
-                    "已退役" -> 1
-                    "已售出" -> 2
-                    else -> 3
+            // 3. 再排序（升序用 compareBy，降序用 compareByDescending，避免额外 reversed() 创建新 Comparator）
+            val ascendingComparator = compareBy { asset: Asset ->
+                when (currentSortType) {
+                    AssetSortType.ADD_TIME -> asset.id
+                    AssetSortType.PURCHASE_TIME -> asset.purchaseDate
+                    AssetSortType.DAILY_COST -> {
+                        val days = asset.usedDays()
+                        if (days > 0) asset.purchasePrice / days else Double.MAX_VALUE
+                    }
+                    AssetSortType.STATUS -> when (asset.status) {
+                        "服役中" -> 0
+                        "已退役" -> 1
+                        "已售出" -> 2
+                        else -> 3
+                    }
+                    AssetSortType.SERVICE_DURATION -> asset.usedDays()
+                    AssetSortType.VALUE -> asset.purchasePrice
                 }
-                AssetSortType.SERVICE_DURATION -> asset.usedDays
-                AssetSortType.VALUE -> asset.purchasePrice
             }
-        }).let { if (isAscending) it else it.reversed() }
+            val descendingComparator = compareByDescending { asset: Asset ->
+                when (currentSortType) {
+                    AssetSortType.ADD_TIME -> asset.id
+                    AssetSortType.PURCHASE_TIME -> asset.purchaseDate
+                    AssetSortType.DAILY_COST -> {
+                        val days = asset.usedDays()
+                        if (days > 0) asset.purchasePrice / days else Double.MAX_VALUE
+                    }
+                    AssetSortType.STATUS -> when (asset.status) {
+                        "服役中" -> 0
+                        "已退役" -> 1
+                        "已售出" -> 2
+                        else -> 3
+                    }
+                    AssetSortType.SERVICE_DURATION -> asset.usedDays()
+                    AssetSortType.VALUE -> asset.purchasePrice
+                }
+            }
+            if (isAscending) tagFiltered.sortedWith(ascendingComparator)
+            else tagFiltered.sortedWith(descendingComparator)
+        }
     }
 
-    // 统计数据（基于筛选后的资产）
+    // 统计数据 - 性能优化：单次遍历 allAssets，5 个统计值一起算出
     val displayAssets = processedAssets
     val totalAssets = allAssets.size
-    val servingCount = allAssets.count { it.status == "服役中" }
-    val retiredCount = allAssets.count { it.status == "已退役" }
-    val soldCount = allAssets.count { it.status == "已售出" }
-    val totalValue = allAssets.sumOf { it.purchasePrice }
-    val totalDailyCost = allAssets.sumOf { it.purchasePrice / it.totalDays }
+    val stats by remember(allAssets) {
+        derivedStateOf {
+            var serving = 0; var retired = 0; var sold = 0
+            var valueSum = 0.0; var dailyCostSum = 0.0
+            for (a in allAssets) {
+                when (a.status) {
+                    "服役中" -> serving++
+                    "已退役" -> retired++
+                    "已售出" -> sold++
+                }
+                valueSum += a.purchasePrice
+                // 日均成本基于实际使用天数
+                val days = a.usedDays()
+                if (days > 0) {
+                    dailyCostSum += a.purchasePrice / days
+                }
+            }
+            AssetStats(serving, retired, sold, valueSum, dailyCostSum)
+        }
+    }
+    val servingCount = stats.serving
+    val retiredCount = stats.retired
+    val soldCount = stats.sold
+    val totalValue = stats.totalValue
+    val totalDailyCost = stats.totalDailyCost
 
     // 修复：使用Material You动态取色，移除硬编码颜色
     val currentServingColor = MaterialTheme.colorScheme.primary // 服役中：使用动态主色
@@ -605,31 +722,34 @@ fun ZhangwuAppScreenContent(
                 // ===================== 主内容（资产/心愿/设置）放在下层 =====================
                 // 资产主页面
                 if (selectedTab == 0) {
-                    // 修复：使用LazyColumn作为根滚动容器，实现整个页面一起滑动
-                    LazyColumn(
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(1),
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(bottom = 160.dp) // 修复：增加底部内边距，确保最后一行卡片不被Tab栏遮挡
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 160.dp)
                     ) {
-                        // 页面标题
-                        item {
+                        // 页面标题（整宽）— horizontalPadding=0 因 Grid contentPadding 已提供 16dp
+                        item(span = { GridItemSpan(maxLineSpan) }) {
                             CommonPageTitle(
-                                title = "掌物", // 改造：标题改为「掌物」
+                                title = "掌物",
                                 showSearchIcon = true,
+                                horizontalPadding = 0.dp,
                                 onSearchClick = {
                                     currentSubScreen = SubScreenType.SEARCH_ASSET
                                 }
                             )
                         }
 
-                        // 资产总览卡片
-                        item {
+                        // 资产总览卡片（整宽）
+                        item(span = { GridItemSpan(maxLineSpan) }) {
                             // 风格改造：资产总览卡片，使用大圆角和柔和的背景色
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 12.dp), // 风格改造：增加垂直间距
+                                    .padding(vertical = 4.dp),
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                                shape = MaterialTheme.shapes.large, // 风格改造：使用大圆角
+                                shape = MaterialTheme.shapes.large,
                                 elevation = CardDefaults.cardElevation(defaultElevation = 4.dp) // 风格改造：增加卡片阴影
                             ) {
                                 Column(modifier = Modifier.padding(24.dp)) { // 风格改造：增加内边距
@@ -669,11 +789,11 @@ fun ZhangwuAppScreenContent(
                             }
                         }
 
-                        // 分类+排序切换
-                        item {
+                        // 分类+排序切换（整宽）
+                        item(span = { GridItemSpan(maxLineSpan) }) {
                             // ===================== 分类+排序切换（新增排序按钮） =====================
                             // 修复：给分类标签和筛选图标做独立布局，预留足够空间，彻底解决重叠
-                            Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                            Box(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                                 // 排序和筛选按钮固定在右上角
                             Row(
                                 modifier = Modifier
@@ -725,10 +845,9 @@ fun ZhangwuAppScreenContent(
                                         .padding(end = 56.dp) // 为排序按钮预留空间
                                 ) {
                                     HorizontalScrollableCategoryBar(
-                                        categories = categoryViewModel.categoryList,
+                                        categories = categoryList,
                                         selectedCategory = selectedCategory,
                                         onCategorySelect = { category ->
-                                            selectedCategory = category
                                             categoryViewModel.selectCategory(category)
                                         },
                                         servingColor = currentServingColor, // 改造：传递新的状态颜色
@@ -739,90 +858,67 @@ fun ZhangwuAppScreenContent(
                             }
                         }
 
-                        // 间距
-                        item {
-                            Spacer(modifier = Modifier.height(24.dp))
+                        // 间距（整宽）
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            Spacer(modifier = Modifier.height(8.dp))
                         }
 
-                        // 资产网格列表 - 修复：使用普通Column+Row实现网格，避免LazyColumn嵌套LazyVerticalGrid导致闪退
-                        items(displayAssets.size) { index ->
-                            val asset = displayAssets[index]
-                            if (index % 2 == 0) {
-                                // 偶数索引，开始新的一行
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                                ) {
-                                    // 第一个卡片
-                                    Box(modifier = Modifier.weight(1f)) {
-                                        ItemCard(
-                                            asset = asset,
-                                            onClick = {
-                                                if (showBatchActions) {
-                                                    // 批量选择模式：切换选择状态
-                                                    selectedAssets = if (selectedAssets.contains(asset)) {
-                                                        selectedAssets.filter { it.id != asset.id }
-                                                    } else {
-                                                        selectedAssets + asset
-                                                    }
-                                                    // 如果没有选中的资产，退出批量选择模式
-                                                    if (selectedAssets.isEmpty()) {
-                                                        showBatchActions = false
-                                                    }
-                                                } else {
-                                                    // 正常模式：跳转到编辑页面
-                                                    currentEditingAsset = asset
-                                                    currentSubScreen = SubScreenType.EDIT_ASSET
-                                                }
-                                            },
-                                            onLongClick = {
-                                                // 长按进入批量选择模式
-                                                showBatchActions = true
-                                                selectedAssets = listOf(asset)
-                                            },
-                                            isSelected = selectedAssets.contains(asset)
-                                        )
-                                    }
-                                    // 第二个卡片（如果存在）
-                                    if (index + 1 < displayAssets.size) {
-                                        val nextAsset = displayAssets[index + 1]
-                                        Box(modifier = Modifier.weight(1f)) {
-                                            ItemCard(
-                                                asset = nextAsset,
-                                                onClick = {
-                                                    if (showBatchActions) {
-                                                        // 批量选择模式：切换选择状态
-                                                        selectedAssets = if (selectedAssets.contains(nextAsset)) {
-                                                            selectedAssets.filter { it.id != nextAsset.id }
-                                                        } else {
-                                                            selectedAssets + nextAsset
-                                                        }
-                                                        // 如果没有选中的资产，退出批量选择模式
-                                                        if (selectedAssets.isEmpty()) {
-                                                            showBatchActions = false
-                                                        }
-                                                    } else {
-                                                        // 正常模式：跳转到编辑页面
-                                                        currentEditingAsset = nextAsset
-                                                        currentSubScreen = SubScreenType.EDIT_ASSET
-                                                    }
-                                                },
-                                                onLongClick = {
-                                                    // 长按进入批量选择模式
-                                                    showBatchActions = true
-                                                    selectedAssets = listOf(nextAsset)
-                                                },
-                                                isSelected = selectedAssets.contains(nextAsset)
-                                            )
+                        // 资产卡片列表 - 性能优化：每个卡片独立 key，滑动时 Compose 能正确跳过未变的卡片
+                        items(
+                            items = displayAssets,
+                            // 用 asset.id 作为 key，避免滑动时全量重组
+                            key = { asset -> asset.id }
+                        ) { asset ->
+                            ItemCard(
+                                asset = asset,
+                                onClick = {
+                                    if (showBatchActions) {
+                                        selectedAssets = if (selectedAssets.contains(asset)) {
+                                            selectedAssets.filter { it.id != asset.id }
+                                        } else {
+                                            selectedAssets + asset
+                                        }
+                                        if (selectedAssets.isEmpty()) {
+                                            showBatchActions = false
                                         }
                                     } else {
-                                        // 占位符保持布局
-                                        Spacer(modifier = Modifier.weight(1f))
+                                        currentEditingAsset = asset
+                                        currentSubScreen = SubScreenType.EDIT_ASSET
                                     }
+                                },
+                                onLongClick = {
+                                    showBatchActions = true
+                                    selectedAssets = listOf(asset)
+                                },
+                                isSelected = selectedAssets.contains(asset)
+                            )
+                        }
+
+                        // 修复：空状态提示，避免"看不到卡片"误判为数据丢失
+                        if (displayAssets.isEmpty()) {
+                            item(span = { GridItemSpan(maxLineSpan) }) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 48.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Text(
+                                        text = if (selectedCategory == "全部" && selectedTag == "全部")
+                                            "暂无资产"
+                                        else
+                                            "当前分类/标签下没有资产（分类=$selectedCategory，标签=$selectedTag）",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = "共 ${allAssets.size} 条资产，已从数据库恢复",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                    )
                                 }
-                                Spacer(modifier = Modifier.height(16.dp))
                             }
                         }
                     }
@@ -841,21 +937,30 @@ fun ZhangwuAppScreenContent(
                         showBatchActions = showWishBatchActions,
                         selectedWishes = selectedWishes,
                         onBatchActionsChange = { showWishBatchActions = it },
-                        onSelectedWishesChange = { selectedWishes = it }
+                        onSelectedWishesChange = { selectedWishes = it },
+                        // 新增：购买心愿所需的分类列表
+                        categories = categoryList,
+                        // 新增：购买心愿回调，将心愿转为资产
+                        onPurchaseWish = { wish, category, purchaseDate, expectedYears ->
+                            wishViewModel.purchaseWish(wish, category, purchaseDate, expectedYears)
+                        }
                     )
                 }
                 // ===================== 设置页面 =====================
                 else if (selectedTab == 2) {
                     SettingScreen(
                         assetsList = allAssets,
-                        wishlistItems = wishViewModel.wishItems.toWishlistItems(),
-                        categoriesList = categoryViewModel.categoryList,
+                        wishlistItems = wishes,
+                        categoriesList = categoryList,
                         onOpenCategoryManager = { currentSubScreen = SubScreenType.CATEGORY_MANAGER },
                         onOpenBackupRestore = { currentSubScreen = SubScreenType.BACKUP_RESTORE },
                         onOpenFeedback = { currentSubScreen = SubScreenType.FEEDBACK },
                         onOpenReward = { currentSubScreen = SubScreenType.REWARD },
-                        onRestoreSuccess = { _, _, _ ->
-                            // 数据恢复逻辑（暂未实现）
+                        onRestoreSuccess = { restoredAssets, restoredWishes, restoredCategories ->
+                            // 修复：真正写回数据库（之前是空实现，导入的备份根本没生效）
+                            assetViewModel.restoreAllAssets(restoredAssets)
+                            wishViewModel.insertAll(restoredWishes)
+                            categoryViewModel.restoreCategories(restoredCategories)
                         }
                     )
                 }
@@ -963,7 +1068,12 @@ fun ZhangwuAppScreenContent(
                             wish = it,
                             onBackClick = { currentSubScreen = null },
                             onSaveWish = { wishViewModel.updateWishItem(it) },
-                            onDeleteWish = { wishViewModel.deleteWishItem(it) }
+                            onDeleteWish = { wishViewModel.deleteWishItem(it) },
+                            // 新增：购买心愿相关参数
+                            categories = categoryList,
+                            onPurchaseWish = { wish, category, purchaseDate, expectedYears ->
+                                wishViewModel.purchaseWish(wish, category, purchaseDate, expectedYears)
+                            }
                         )
                         // 修复：添加BackHandler处理系统返回键
                         BackHandler {
@@ -996,12 +1106,13 @@ fun ZhangwuAppScreenContent(
                 Box(modifier = Modifier.fillMaxSize()) {
                     CommonSearchScreen(
                         title = "搜索心愿单",
-                        originalList = wishViewModel.wishItems,
+                        originalList = wishes,
                         itemContent = { wish -> WishCard(
                             wish = wish,
                             onClick = { currentEditingWish = wish; currentSubScreen = SubScreenType.EDIT_WISHLIST },
                             onLongClick = {},
-                            isSelected = false
+                            isSelected = false,
+                            showPurchaseButton = false
                         ) },
                         filterRule = { item, query -> item.name.contains(query, ignoreCase = true) },
                         onBackClick = { currentSubScreen = null }
@@ -1028,9 +1139,14 @@ fun ZhangwuAppScreenContent(
                     BackupRestoreScreen(
                         onBackClick = { currentSubScreen = null },
                         assetsList = allAssets,
-                        wishlistItems = wishViewModel.wishItems.toWishlistItems(),
-                        categoriesList = categoryViewModel.categoryList,
-                        onRestoreSuccess = { _, _, _ -> }
+                        wishlistItems = wishes,
+                        categoriesList = categoryList,
+                        onRestoreSuccess = { restoredAssets, restoredWishes, restoredCategories ->
+                            // 修复：真正写回数据库
+                            assetViewModel.restoreAllAssets(restoredAssets)
+                            wishViewModel.insertAll(restoredWishes)
+                            categoryViewModel.restoreCategories(restoredCategories)
+                        }
                     )
                     // 修复：添加BackHandler处理系统返回键
                     BackHandler {
@@ -1232,7 +1348,7 @@ fun ZhangwuAppScreenContent(
                         Text("选择目标分类")
                         Spacer(modifier = Modifier.height(16.dp))
                         LazyColumn {
-                            items(categoryViewModel.categoryList) { category ->
+                            items(categoryList) { category ->
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()

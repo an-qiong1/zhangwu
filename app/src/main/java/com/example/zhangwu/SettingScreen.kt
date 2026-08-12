@@ -23,7 +23,7 @@ import com.example.zhangwu.FeedbackScreen
 import com.example.zhangwu.RewardScreen
 import com.example.zhangwu.BackupRestoreScreen
 import com.example.zhangwu.model.Asset
-import com.example.zhangwu.model.WishlistItem
+import com.example.zhangwu.model.WishItem
 import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
 import com.example.zhangwu.viewmodel.ThemeViewModel
@@ -40,13 +40,13 @@ val LocalThemeState = compositionLocalOf<MutableState<com.example.zhangwu.viewmo
 @Composable
 fun SettingScreen(
     assetsList: List<Asset> = emptyList(),
-    wishlistItems: List<WishlistItem> = emptyList(),
+    wishlistItems: List<WishItem> = emptyList(),
     categoriesList: List<String> = listOf("全部", "通勤代步", "文娱数码", "穿戴配饰"),
     onOpenCategoryManager: () -> Unit = {},
     onOpenBackupRestore: () -> Unit = {},
     onOpenFeedback: () -> Unit = {},
     onOpenReward: () -> Unit = {},
-    onRestoreSuccess: (List<Asset>, List<WishlistItem>, List<String>) -> Unit = { _, _, _ -> }
+    onRestoreSuccess: (List<Asset>, List<WishItem>, List<String>) -> Unit = { _, _, _ -> }
 ) {
     val themeMode = LocalThemeState.current
     val context = LocalContext.current

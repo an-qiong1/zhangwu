@@ -35,4 +35,12 @@ class AssetRepository(private val assetDao: AssetDao) {
     suspend fun deleteAll() {
         assetDao.deleteAll()
     }
+
+    /**
+     * 事务化批量替换（用于从备份恢复）
+     * 内部走 Dao 的 @Transaction，失败回滚，原数据保留
+     */
+    suspend fun replaceAll(assets: List<Asset>) {
+        assetDao.replaceAllAssets(assets.map { it.toAssetEntity() })
+    }
 }

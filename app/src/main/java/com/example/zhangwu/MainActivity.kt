@@ -27,16 +27,58 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.ViewModelProvider
 import android.content.Context
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ProcessLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleObserver
+import androidx.lifecycle.OnLifecycleEvent
+import androidx.lifecycle.lifecycleScope
+import com.example.zhangwu.webdav.AutoSyncHelper
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     // 修复：添加返回键时间戳，用于双击退出
     private var lastBackPressedTime = 0L
-    
+
+    // WebDAV 自动同步助手
+    private lateinit var autoSyncHelper: AutoSyncHelper
+
+    // ProcessLifecycleObserver：监听 APP 前后台切换
+    private val appLifecycleObserver = object : LifecycleObserver {
+        @OnLifecycleEvent(Lifecycle.Event.ON_STOP)
+        fun onAppBackgrounded() {
+            // 退出 APP 时自动上传到坚果云
+            lifecycleScope.launch {
+                autoSyncHelper.autoUpload()
+            }
+        }
+
+        @OnLifecycleEvent(Lifecycle.Event.ON_START)
+        fun onAppForegrounded() {
+            // 进入 APP 时检查是否需要首次同步
+            lifecycleScope.launch {
+                val needRestore = autoSyncHelper.checkFirstSync()
+                if (needRestore) {
+                    runOnUiThread {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "云端有备份，可前往「备份与恢复」页面恢复",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // 启用 Android 15/16 默认的沉浸式边缘到边缘显示 (Edge-to-Edge)
         enableEdgeToEdge()
         Log.d("MainActivity", "onCreate started")
         super.onCreate(savedInstanceState)
+
+        // 初始化自动同步助手
+        autoSyncHelper = AutoSyncHelper(this)
+        ProcessLifecycleOwner.get().lifecycle.addObserver(appLifecycleObserver)
         setContent {
             // 修复：使用ViewModelProvider创建ThemeViewModel实例
             val themeViewModel: ThemeViewModel = viewModel()

@@ -28,8 +28,8 @@ data class AssetEntity(
         return (diff / (1000 * 60 * 60 * 24)).toInt()
     }
 
-    // Total days expected
-    fun getTotalDays(): Int = expectedYears * 365
+    // Total days expected (0 if not set)
+    fun getTotalDays(): Int = if (expectedYears <= 0) 0 else expectedYears * 365
 
     // Remaining days
     fun getRemainingDays(): Int = maxOf(0, getTotalDays() - getUsedDays())
@@ -41,11 +41,11 @@ data class AssetEntity(
         return getUsedDays().toFloat() / total
     }
 
-    // Daily cost string formatted
+    // Daily cost string: 基于实际使用天数
     fun getDailyCostString(): String {
-        val total = getTotalDays()
-        if (total == 0) return "¥0.00"
-        val daily = purchasePrice / total
+        val days = getUsedDays()
+        if (days <= 0) return "¥0"
+        val daily = purchasePrice / days
         return "¥%.2f".format(daily)
     }
 

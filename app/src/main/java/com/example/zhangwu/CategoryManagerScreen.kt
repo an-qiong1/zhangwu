@@ -10,6 +10,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -47,7 +48,7 @@ fun CategoryManagerScreen(
     val context = LocalContext.current
     // 修复：使用CategoryViewModel管理分类数据，实现双向同步
     val categoryViewModel: CategoryViewModel = viewModel()
-    val categoryList = categoryViewModel.categoryList
+    val categoryList by categoryViewModel.categoryList.collectAsState()
     // 添加分类弹窗
     var showAddDialog by remember { mutableStateOf(false) }
     var newCategoryName by remember { mutableStateOf("") }
@@ -116,12 +117,11 @@ fun CategoryManagerScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth().weight(1f)
             ) {
-                items(categoryList, key = { it }) { category ->
-                    val index = categoryList.indexOf(category)
+                itemsIndexed(categoryList, key = { index, category -> "$index-$category" }) { index, category ->
                     val isDefaultCategory = categoryViewModel.isDefaultCategory(category)
                     ReorderableItem(
                         state = reorderableState,
-                        key = category
+                        key = "$index-$category"
                     ) { isDragging ->
                         // 分类项卡片
                             Card(

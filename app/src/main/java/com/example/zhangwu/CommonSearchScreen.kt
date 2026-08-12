@@ -26,7 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.tooling.preview.Preview
 import com.example.zhangwu.model.Asset
-import com.example.zhangwu.model.WishlistItem
+import com.example.zhangwu.model.WishItem
 import com.example.zhangwu.ui.theme.ZhangwuTheme
 import androidx.compose.foundation.isSystemInDarkTheme
 
@@ -294,14 +294,14 @@ fun AssetSearchPreview() {
 @Composable
 fun WishlistSearchPreview() {
     val sampleWishlist = listOf(
-        WishlistItem(id = 1, name = "新款相机", price = 12000.0, targetAmount = 12000.0, savedAmount = 3000.0),
-        WishlistItem(id = 2, name = "旅游基金", price = 5000.0, targetAmount = 5000.0, savedAmount = 1000.0)
+        WishItem(id = 1L, name = "新款相机", price = 12000.0, targetDate = ""),
+        WishItem(id = 2L, name = "旅游基金", price = 5000.0, targetDate = "")
     )
     ZhangwuTheme {
         CommonSearchScreen(
             title = "搜索心愿单",
             originalList = sampleWishlist,
-            itemContent = { WishlistCard(item = it) },
+            itemContent = { WishCard(wish = it, onClick = {}) },
             filterRule = { item, query -> item.name.contains(query, ignoreCase = true) },
             onBackClick = {}
         )

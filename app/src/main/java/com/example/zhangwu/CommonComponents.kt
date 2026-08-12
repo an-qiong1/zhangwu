@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.zhangwu.ui.theme.ZhangwuTheme
@@ -31,13 +32,14 @@ fun CommonPageTitle(
     title: String,
     showSearchIcon: Boolean = false,
     showBackButton: Boolean = false,
+    horizontalPadding: Dp = 16.dp,
     onSearchClick: () -> Unit = {},
     onBackClick: () -> Unit = {}
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = horizontalPadding, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // 左侧：返回按钮或占位符

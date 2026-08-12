@@ -62,7 +62,13 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.1")
     implementation("com.google.code.gson:gson:2.10.1")
     implementation("androidx.datastore:datastore-preferences:1.0.0")
+    // WebDAV 坚果云同步
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // 监听 APP 前后台切换（用于自动同步）
+    implementation("androidx.lifecycle:lifecycle-process:2.6.1")
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.androidx.room.testing)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

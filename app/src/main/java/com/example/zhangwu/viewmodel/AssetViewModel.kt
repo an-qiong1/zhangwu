@@ -32,4 +32,11 @@ class AssetViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteAsset(asset: Asset) = viewModelScope.launch {
         repository.deleteAsset(asset)
     }
+
+    /**
+     * 批量恢复资产（用于从备份恢复）：事务化先清空再插入，失败回滚保证零丢失
+     */
+    fun restoreAllAssets(assets: List<Asset>) = viewModelScope.launch {
+        repository.replaceAll(assets)
+    }
 }

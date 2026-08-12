@@ -52,10 +52,12 @@ fun EditAssetScreen(
     val scrollState = rememberScrollState()
     // 修复：添加CategoryViewModel实例，用于获取分类列表
     val categoryViewModel: CategoryViewModel = viewModel()
+    val categoryList by categoryViewModel.categoryList.collectAsState()
     // ===================== 表单状态 =====================
     var assetImageUri by remember { mutableStateOf<Uri?>(asset.imageUri?.let { Uri.parse(it) }) }
     var assetName by remember { mutableStateOf(asset.name) }
     var purchasePrice by remember { mutableStateOf(asset.purchasePrice.toString()) }
+    var expectedYears by remember { mutableStateOf(if (asset.expectedYears > 0) asset.expectedYears.toString() else "") }
     var purchaseDate by remember { mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).format(Date(asset.purchaseDate))) }
     var assetStatus by remember { mutableStateOf(asset.status) }
     var sellDate by remember { mutableStateOf(asset.sellDate?.let { SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).format(Date(it)) } ?: "") }
@@ -92,6 +94,7 @@ fun EditAssetScreen(
             name = assetName,
             purchasePrice = purchasePrice.toDoubleOrNull() ?: 0.0,
             purchaseDate = dateFormat.parse(purchaseDate)?.time ?: System.currentTimeMillis(),
+            expectedYears = expectedYears.toIntOrNull() ?: 0,
             status = assetStatus,
             sellDate = if (assetStatus != "服役中") dateFormat.parse(sellDate)?.time else null,
             sellPrice = if (assetStatus != "服役中") sellPrice.toDoubleOrNull() else null,
@@ -187,7 +190,19 @@ fun EditAssetScreen(
                 onValueChange = { purchasePrice = it },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("购入价格") },
-                leadingIcon = { Text("¥", color = MaterialTheme.colorScheme.onSurfaceVariant) }, // 修复：将美元符号替换为人民币符号
+                leadingIcon = { Text("¥", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp)
+            )
+            // 预期使用年限（可选）
+            OutlinedTextField(
+                value = expectedYears,
+                onValueChange = { expectedYears = it.filter { c -> c.isDigit() } },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("预期使用年限（选填）") },
+                supportingText = { Text("留空则不计算日均成本和进度", fontSize = 11.sp) },
+                trailingIcon = { Text("年", color = MaterialTheme.colorScheme.onSurfaceVariant) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
                 shape = RoundedCornerShape(12.dp)
@@ -441,7 +456,7 @@ fun EditAssetScreen(
                 )
 
                 // 分类列表
-                categoryViewModel.categoryList.forEach { category ->
+                categoryList.forEach { category ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
